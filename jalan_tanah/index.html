@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebGIS — Manajemen Jalan, Parsil & Laporan Rusak</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-dark:      #0d1117; --bg-panel:  #161b22; --bg-card:  #21262d;
+  --bg-hover:     #30363d; --border:    #30363d; --border-light:#484f58;
+  --text-primary: #e6edf3; --text-secondary:#8b949e; --text-muted:#6e7681;
+  --accent-blue:  #388bfd; --accent-green:#3fb950; --accent-yellow:#e3b341;
+  --accent-red:   #f85149;
+  --jalan-nasional:#ef4444; --jalan-provinsi:#3b82f6; --jalan-kabupaten:#22c55e;
+  --parsil-shm:#f59e0b; --parsil-hgb:#8b5cf6; --parsil-hgu:#06b6d4; --parsil-hp:#ec4899;
+  --laporan-pending:#f59e0b; --laporan-verified:#388bfd; --laporan-resolved:#3fb950;
+  --laporan-urgent:#ef4444;
+  --shadow:0 4px 24px rgba(0,0,0,.4); --radius:8px; --radius-lg:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{height:100%;font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg-dark);color:var(--text-primary);}
+#app{display:flex;height:100vh;overflow:hidden;}
+
+/* ── SIDEBAR ── */
+#sidebar{
+  width:380px;min-width:320px;max-width:380px;
+  background:var(--bg-panel);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;z-index:10;
+}
+#map-container{flex:1;position:relative;}
+#map{width:100%;height:100%;}
+
+.sidebar-header{padding:14px 16px 0;border-bottom:1px solid var(--border);flex-shrink:0;}
+.app-title{font-size:11px;font-family:'Space Mono',monospace;color:var(--accent-blue);letter-spacing:2px;text-transform:uppercase;margin-bottom:2px;}
+.app-subtitle{font-size:16px;font-weight:700;margin-bottom:10px;}
+
+/* ── SEARCH BAR ── */
+.search-bar{position:relative;margin-bottom:8px;}
+.search-bar input{width:100%;padding:8px 36px 8px 32px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-primary);font-family:inherit;font-size:13px;}
+.search-bar input:focus{outline:none;border-color:var(--accent-blue);}
+.search-bar .ico-search{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:12px;pointer-events:none;}
+.search-bar .btn-clear{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;padding:2px;}
+.search-bar .btn-clear:hover{color:var(--text-primary);}
+
+/* ── TABS ── */
+.tabs{display:flex;gap:2px;background:var(--bg-dark);padding:4px;border-radius:var(--radius) var(--radius) 0 0;}
+.tab-btn{flex:1;padding:7px 8px;border:none;border-radius:6px;background:transparent;color:var(--text-secondary);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:5px;}
+.tab-btn.active{background:var(--bg-card);color:var(--text-primary);}
+.tab-btn:hover:not(.active){background:var(--bg-hover);color:var(--text-primary);}
+.tab-indicator{width:7px;height:7px;border-radius:50%;display:inline-block;}
+.tab-indicator.jalan{background:var(--jalan-nasional);}
+.tab-indicator.parsil{background:var(--parsil-shm);}
+.tab-indicator.laporan{background:var(--laporan-urgent);}
+
+/* ── SIDEBAR CONTENT ── */
+.sidebar-content{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+.sidebar-content::-webkit-scrollbar{width:4px;}
+.sidebar-content::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+
+.panel{display:none;flex-direction:column;gap:10px;}
+.panel.active{display:flex;}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:none;border-radius:var(--radius);font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;justify-content:center;}
+.btn-primary{background:var(--accent-blue);color:#fff;}.btn-primary:hover{background:#58a6ff;}
+.btn-success{background:var(--accent-green);color:#fff;}.btn-success:hover{background:#56d364;}
+.btn-danger{background:#da3633;color:#fff;}.btn-danger:hover{background:var(--accent-red);}
+.btn-warning{background:var(--accent-yellow);color:#000;}.btn-warning:hover{background:#f0c000;}
+.btn-orange{background:#f97316;color:#fff;}.btn-orange:hover{background:#fb923c;}
+.btn-ghost{background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border);}
+.btn-ghost:hover{background:var(--bg-hover);color:var(--text-primary);border-color:var(--border-light);}
+.btn-sm{padding:5px 9px;font-size:11px;}
+.btn-full{width:100%;}
+.action-bar{display:flex;gap:6px;flex-wrap:wrap;}
+.action-bar .btn{flex:1;min-width:100px;}
+
+.pulse-dot{width:7px;height:7px;background:currentColor;border-radius:50%;animation:pulse 1.2s ease-in-out infinite;flex-shrink:0;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.4;transform:scale(.7);}}
+
+/* ── FILTER ROW ── */
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;}
+.filter-row select,.filter-row input[type=number]{flex:1;min-width:80px;padding:6px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-primary);font-family:inherit;font-size:12px;}
+.filter-row select:focus,.filter-row input:focus{outline:none;border-color:var(--accent-blue);}
+.filter-row select option{background:var(--bg-card);}
+.filter-label{font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;}
+
+/* ── LEGEND ── */
+.legend-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;}
+.legend-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;}
+.legend-items{display:flex;flex-direction:column;gap:5px;}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary);}
+.legend-line{width:28px;height:4px;border-radius:2px;flex-shrink:0;}
+.legend-poly{width:18px;height:14px;border-radius:3px;opacity:.8;flex-shrink:0;}
+.legend-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+
+/* ── DATA LIST ── */
+.section-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);display:flex;align-items:center;justify-content:space-between;}
+.badge{font-size:11px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--bg-hover);color:var(--text-secondary);}
+.data-list{display:flex;flex-direction:column;gap:5px;}
+.data-item{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;transition:all .15s;position:relative;overflow:hidden;}
+.data-item::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;}
+.data-item:hover{border-color:var(--border-light);background:var(--bg-hover);}
+.item-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;}
+.item-name{font-size:13px;font-weight:600;color:var(--text-primary);}
+.item-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;text-transform:uppercase;letter-spacing:.5px;}
+.item-meta{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.item-meta span{display:flex;align-items:center;gap:3px;}
+.item-actions{display:flex;gap:3px;margin-top:7px;padding-top:7px;border-top:1px solid var(--border);}
+.empty-state{text-align:center;padding:24px 12px;color:var(--text-muted);font-size:12px;}
+.empty-state i{font-size:28px;margin-bottom:8px;display:block;opacity:.4;}
+
+/* Badge variants */
+.badge-nasional{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);}
+.badge-provinsi{background:rgba(59,130,246,.15);color:#60a5fa;border:1px solid rgba(59,130,246,.3);}
+.badge-kabupaten{background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);}
+.badge-shm{background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.3);}
+.badge-hgb{background:rgba(139,92,246,.15);color:#a78bfa;border:1px solid rgba(139,92,246,.3);}
+.badge-hgu{background:rgba(6,182,212,.15);color:#22d3ee;border:1px solid rgba(6,182,212,.3);}
+.badge-hp{background:rgba(236,72,153,.15);color:#f472b6;border:1px solid rgba(236,72,153,.3);}
+.badge-pending{background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.3);}
+.badge-verified{background:rgba(56,139,253,.15);color:#60a5fa;border:1px solid rgba(56,139,253,.3);}
+.badge-resolved{background:rgba(63,185,80,.15);color:#4ade80;border:1px solid rgba(63,185,80,.3);}
+.badge-urgent{background:rgba(239,68,68,.2);color:#f87171;border:1px solid rgba(239,68,68,.4);}
+
+.data-item.nasional::before{background:var(--jalan-nasional);}
+.data-item.provinsi::before{background:var(--jalan-provinsi);}
+.data-item.kabupaten::before{background:var(--jalan-kabupaten);}
+.data-item.shm::before{background:var(--parsil-shm);}
+.data-item.hgb::before{background:var(--parsil-hgb);}
+.data-item.hgu::before{background:var(--parsil-hgu);}
+.data-item.hp::before{background:var(--parsil-hp);}
+.data-item.pending::before{background:var(--laporan-pending);}
+.data-item.verified::before{background:var(--laporan-verified);}
+.data-item.resolved::before{background:var(--laporan-resolved);}
+.data-item.urgent::before{background:var(--laporan-urgent);width:5px;}
+
+/* ── EDIT PANEL ── */
+#sidebar-edit-panel{
+  display:none;flex-direction:column;
+  border-top:2px solid var(--accent-blue);
+  animation:slideDown .2s ease;flex-shrink:0;
+  max-height:60vh;overflow:hidden;
+}
+#sidebar-edit-panel.active{display:flex;}
+#sidebar-edit-panel.parsil-mode{border-top-color:var(--parsil-shm);}
+@keyframes slideDown{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}
+.edit-panel-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.edit-panel-title{font-size:13px;font-weight:700;display:flex;align-items:center;gap:7px;}
+.mode-tag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:20px;background:rgba(56,139,253,.15);color:var(--accent-blue);text-transform:uppercase;}
+.mode-tag.parsil{background:rgba(245,158,11,.15);color:var(--parsil-shm);}
+.edit-panel-stats{display:flex;gap:14px;padding:7px 14px;background:var(--bg-dark);border-bottom:1px solid var(--border);font-size:12px;flex-shrink:0;}
+.edit-stat{display:flex;flex-direction:column;gap:1px;}
+.edit-stat-label{color:var(--text-muted);font-size:10px;text-transform:uppercase;letter-spacing:.5px;}
+.edit-stat-value{color:var(--text-primary);font-weight:600;font-family:'Space Mono',monospace;font-size:12px;}
+.edit-hint{padding:6px 14px;font-size:11px;color:var(--text-muted);background:var(--bg-dark);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.edit-panel-form{padding:10px 14px;display:flex;flex-direction:column;gap:7px;overflow-y:auto;flex:1;min-height:0;}
+.edit-panel-form::-webkit-scrollbar{width:3px;}
+.edit-panel-form::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+.edit-panel-form .form-group{margin-bottom:0;}
+.edit-panel-actions{display:flex;gap:7px;padding:9px 14px;border-top:1px solid var(--border);flex-shrink:0;}
+
+/* ── ANALYTICS PANEL ── */
+.analytics-panel{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;}
+.analytics-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;}
+.stat-box{background:var(--bg-dark);border:1px solid var(--border);border-radius:6px;padding:8px 10px;}
+.stat-box-val{font-size:20px;font-weight:700;font-family:'Space Mono',monospace;}
+.stat-box-lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;}
+.sering-rusak-list{display:flex;flex-direction:column;gap:4px;}
+.sering-rusak-item{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;background:var(--bg-dark);border-radius:5px;font-size:12px;}
+.sering-rusak-bar-wrap{height:4px;background:var(--border);border-radius:2px;margin-top:4px;overflow:hidden;}
+.sering-rusak-bar{height:100%;border-radius:2px;background:var(--accent-red);}
+.tren-chart{height:60px;position:relative;display:flex;align-items:flex-end;gap:3px;padding-top:4px;}
+.tren-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;}
+.tren-bar{width:100%;background:rgba(56,139,253,.5);border-radius:2px 2px 0 0;min-height:2px;transition:height .3s;}
+.tren-bar:hover{background:var(--accent-blue);}
+.tren-lbl{font-size:8px;color:var(--text-muted);font-family:'Space Mono',monospace;}
+
+/* ── DRAW STATUS ── */
+.draw-status-box{display:none;align-items:center;gap:8px;padding:8px 12px;border-radius:7px;font-size:12px;}
+
+/* ── MODAL ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9999;align-items:center;justify-content:center;backdrop-filter:blur(4px);}
+.modal-overlay.active{display:flex;}
+.modal{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-lg);width:500px;max-width:96vw;max-height:92vh;overflow-y:auto;box-shadow:var(--shadow);animation:slideUp .2s ease;}
+.modal.modal-wide{width:640px;}
+@keyframes slideUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 22px 14px;border-bottom:1px solid var(--border);}
+.modal-title{font-size:15px;font-weight:700;}
+.modal-close{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:17px;padding:4px;border-radius:4px;transition:all .15s;}
+.modal-close:hover{color:var(--text-primary);background:var(--bg-hover);}
+.modal-body{padding:18px 22px;}
+.modal-footer{display:flex;gap:7px;justify-content:flex-end;padding:14px 22px;border-top:1px solid var(--border);}
+.modal::-webkit-scrollbar{width:4px;}
+.modal::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+
+/* ── FORM ── */
+.form-group{margin-bottom:14px;}
+.form-label{display:block;font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px;}
+.form-control{width:100%;padding:8px 11px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-primary);font-family:inherit;font-size:13px;transition:border-color .15s;}
+.form-control:focus{outline:none;border-color:var(--accent-blue);box-shadow:0 0 0 3px rgba(56,139,253,.15);}
+.form-control[readonly]{color:var(--text-muted);background:var(--bg-dark);cursor:not-allowed;}
+.form-hint{font-size:11px;color:var(--text-muted);margin-top:3px;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+select.form-control option{background:var(--bg-card);}
+
+/* foto upload */
+.foto-upload-area{border:2px dashed var(--border);border-radius:var(--radius);padding:20px;text-align:center;cursor:pointer;transition:all .2s;position:relative;}
+.foto-upload-area:hover,.foto-upload-area.drag-over{border-color:var(--accent-blue);background:rgba(56,139,253,.05);}
+.foto-upload-area input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;}
+.foto-preview{width:100%;max-height:180px;object-fit:cover;border-radius:6px;margin-top:8px;display:none;}
+.foto-meta{font-size:11px;color:var(--text-muted);margin-top:6px;padding:6px 8px;background:var(--bg-dark);border-radius:5px;display:none;}
+
+/* koordinat picker */
+.coord-picker{display:flex;gap:8px;align-items:center;}
+.coord-picker input{flex:1;}
+.coord-picker .btn{flex-shrink:0;white-space:nowrap;}
+.coord-picking-hint{font-size:11px;color:var(--accent-blue);padding:6px 10px;background:rgba(56,139,253,.08);border-radius:5px;display:none;align-items:center;gap:6px;}
+
+/* laporan detail modal */
+.laporan-foto{width:100%;border-radius:var(--radius);margin-bottom:12px;max-height:300px;object-fit:cover;}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.info-cell{background:var(--bg-dark);border-radius:5px;padding:8px 10px;}
+.info-cell-lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;}
+.info-cell-val{font-size:13px;font-weight:600;}
+.status-select{padding:5px 10px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-primary);font-family:inherit;font-size:12px;}
+.cluster-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);}
+
+/* ── TOAST ── */
+#toast-container{position:fixed;bottom:28px;right:18px;z-index:99999;display:flex;flex-direction:column;gap:7px;}
+.toast{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;font-weight:500;color:var(--text-primary);box-shadow:var(--shadow);animation:toastIn .3s ease;min-width:240px;}
+@keyframes toastIn{from{opacity:0;transform:translateX(100%);}to{opacity:1;transform:translateX(0);}}
+.toast.success{border-color:var(--accent-green);}.toast.success i{color:var(--accent-green);}
+.toast.error{border-color:var(--accent-red);}.toast.error i{color:var(--accent-red);}
+.toast.info{border-color:var(--accent-blue);}.toast.info i{color:var(--accent-blue);}
+
+/* map info */
+.map-info-bar{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);background:rgba(13,17,23,.9);border:1px solid var(--border);border-radius:20px;padding:6px 18px;font-size:11px;font-family:'Space Mono',monospace;color:var(--text-secondary);pointer-events:none;z-index:1000;white-space:nowrap;}
+/* cluster marker */
+.cluster-marker{background:var(--laporan-urgent);border:3px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:11px;box-shadow:0 2px 10px rgba(239,68,68,.6);}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══ SIDEBAR ══ -->
+<div id="sidebar">
+  <div class="sidebar-header">
+    <div class="app-title">WebGIS System</div>
+    <div class="app-subtitle">Manajemen Spasial</div>
+    <div class="search-bar">
+      <i class="fas fa-search ico-search"></i>
+      <input type="text" id="global-search" placeholder="Cari jalan, parsil, atau laporan…" oninput="onSearchInput(this.value)">
+      <button class="btn-clear" onclick="clearSearch()" title="Hapus"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('jalan')"><span class="tab-indicator jalan"></span>Jalan</button>
+      <button class="tab-btn" onclick="switchTab('parsil')"><span class="tab-indicator parsil"></span>Parsil</button>
+      <button class="tab-btn" onclick="switchTab('laporan')"><span class="tab-indicator laporan"></span>Laporan</button>
+    </div>
+  </div>
+
+  <!-- EDIT PANEL -->
+  <div id="sidebar-edit-panel">
+    <div class="edit-panel-header">
+      <div class="edit-panel-title">
+        <i class="fas fa-pen-to-square"></i>
+        <span id="edit-panel-name">Edit</span>
+        <span class="mode-tag" id="edit-panel-tag">Jalan</span>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="cancelEditGeometri(true)"><i class="fas fa-times"></i> Batal</button>
+    </div>
+    <div class="edit-panel-stats">
+      <div class="edit-stat"><div class="edit-stat-label" id="edit-stat-label">Panjang</div><div class="edit-stat-value" id="edit-stat-value">—</div></div>
+      <div class="edit-stat"><div class="edit-stat-label">Titik</div><div class="edit-stat-value" id="edit-stat-count">0</div></div>
+    </div>
+    <div class="edit-hint"><i class="fas fa-circle-info"></i>Drag titik untuk geser · Klik kanan titik untuk hapus</div>
+    <div class="edit-panel-form" id="edit-panel-form-content"></div>
+    <div class="edit-panel-actions">
+      <button class="btn btn-success btn-full" onclick="saveEditGeometri()"><i class="fas fa-save"></i> Simpan Semua</button>
+    </div>
+  </div>
+
+  <div class="sidebar-content" id="sidebar-main-content">
+
+    <!-- ── PANEL JALAN ── -->
+    <div id="panel-jalan" class="panel active">
+      <div class="action-bar">
+        <button class="btn btn-primary" onclick="startDrawJalan()"><i class="fas fa-draw-polygon"></i> Gambar Jalan</button>
+        <button class="btn btn-ghost" onclick="cancelDraw()"><i class="fas fa-times"></i> Batal</button>
+      </div>
+      <div id="draw-status-jalan" class="draw-status-box" style="background:rgba(56,139,253,.1);border:1px solid rgba(56,139,253,.3);color:var(--accent-blue);">
+        <span class="pulse-dot"></span><span id="jalan-draw-hint">Klik peta untuk menambah titik. Double-klik selesai.</span>
+      </div>
+      <!-- Filter Jalan -->
+      <div>
+        <div class="filter-label">Filter</div>
+        <div class="filter-row">
+          <select id="filter-jalan-status" onchange="applyFilterJalan()">
+            <option value="">Semua Status</option>
+            <option value="Nasional">Nasional</option>
+            <option value="Provinsi">Provinsi</option>
+            <option value="Kabupaten">Kabupaten</option>
+          </select>
+          <input type="number" id="filter-jalan-min" placeholder="Min m" min="0" oninput="applyFilterJalan()">
+          <input type="number" id="filter-jalan-max" placeholder="Max m" min="0" oninput="applyFilterJalan()">
+        </div>
+      </div>
+      <div class="legend-card">
+        <div class="legend-title">Legenda</div>
+        <div class="legend-items">
+          <div class="legend-item"><div class="legend-line" style="background:var(--jalan-nasional)"></div><span>Jalan Nasional</span></div>
+          <div class="legend-item"><div class="legend-line" style="background:var(--jalan-provinsi)"></div><span>Jalan Provinsi</span></div>
+          <div class="legend-item"><div class="legend-line" style="background:var(--jalan-kabupaten)"></div><span>Jalan Kabupaten</span></div>
+        </div>
+      </div>
+      <div class="section-title"><span>Data Jalan</span><span class="badge" id="count-jalan">0</span></div>
+      <div class="data-list" id="list-jalan"><div class="empty-state"><i class="fas fa-road"></i>Belum ada data jalan</div></div>
+    </div>
+
+    <!-- ── PANEL PARSIL ── -->
+    <div id="panel-parsil" class="panel">
+      <div class="action-bar">
+        <button class="btn btn-warning" onclick="startDrawParsil()"><i class="fas fa-vector-square"></i> Gambar Parsil</button>
+        <button class="btn btn-ghost" onclick="cancelDraw()"><i class="fas fa-times"></i> Batal</button>
+      </div>
+      <div id="draw-status-parsil" class="draw-status-box" style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:var(--parsil-shm);">
+        <span class="pulse-dot"></span><span id="parsil-draw-hint">Klik peta untuk menambah titik. Double-klik selesai.</span>
+      </div>
+      <!-- Filter Parsil -->
+      <div>
+        <div class="filter-label">Filter</div>
+        <div class="filter-row">
+          <select id="filter-parsil-status" onchange="applyFilterParsil()">
+            <option value="">Semua Status</option>
+            <option value="SHM">SHM</option><option value="HGB">HGB</option>
+            <option value="HGU">HGU</option><option value="HP">HP</option>
+          </select>
+          <input type="number" id="filter-parsil-min" placeholder="Min m²" min="0" oninput="applyFilterParsil()">
+          <input type="number" id="filter-parsil-max" placeholder="Max m²" min="0" oninput="applyFilterParsil()">
+        </div>
+      </div>
+      <div class="legend-card">
+        <div class="legend-title">Legenda Sertifikat</div>
+        <div class="legend-items">
+          <div class="legend-item"><div class="legend-poly" style="background:var(--parsil-shm)"></div><span>Hak Milik (SHM)</span></div>
+          <div class="legend-item"><div class="legend-poly" style="background:var(--parsil-hgb)"></div><span>Hak Guna Bangunan (HGB)</span></div>
+          <div class="legend-item"><div class="legend-poly" style="background:var(--parsil-hgu)"></div><span>Hak Guna Usaha (HGU)</span></div>
+          <div class="legend-item"><div class="legend-poly" style="background:var(--parsil-hp)"></div><span>Hak Pakai (HP)</span></div>
+        </div>
+      </div>
+      <div class="section-title"><span>Data Parsil</span><span class="badge" id="count-parsil">0</span></div>
+      <div class="data-list" id="list-parsil"><div class="empty-state"><i class="fas fa-map"></i>Belum ada data parsil</div></div>
+    </div>
+
+    <!-- ── PANEL LAPORAN ── -->
+    <div id="panel-laporan" class="panel">
+      <div class="action-bar">
+        <button class="btn btn-orange" onclick="openModal('modal-laporan-form')"><i class="fas fa-plus"></i> Laporkan</button>
+        <button class="btn btn-ghost" onclick="loadAnalytics()"><i class="fas fa-chart-bar"></i> Analitik</button>
+      </div>
+      <!-- Filter Laporan -->
+      <div>
+        <div class="filter-label">Filter Periode</div>
+        <div class="filter-row">
+          <select id="filter-laporan-periode" onchange="applyFilterLaporan()">
+            <option value="1" selected>1 Bulan Terakhir</option>
+            <option value="3">3 Bulan Terakhir</option>
+            <option value="6">6 Bulan Terakhir</option>
+            <option value="12">12 Bulan Terakhir</option>
+            <option value="all">Semua Data</option>
+          </select>
+          <select id="filter-laporan-status" onchange="applyFilterLaporan()">
+            <option value="">Semua Status</option>
+            <option value="pending">Pending</option>
+            <option value="verified">Verified</option>
+            <option value="resolved">Resolved</option>
+          </select>
+        </div>
+      </div>
+      <div class="legend-card">
+        <div class="legend-title">Legenda Laporan</div>
+        <div class="legend-items">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--laporan-urgent)"></div><span>Urgent (≥3 laporan/50m)</span></div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--laporan-pending)"></div><span>Pending</span></div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--laporan-verified)"></div><span>Verified</span></div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--laporan-resolved)"></div><span>Resolved</span></div>
+        </div>
+      </div>
+      <div class="section-title"><span>Laporan Masuk</span><span class="badge" id="count-laporan">0</span></div>
+      <div class="data-list" id="list-laporan"><div class="empty-state"><i class="fas fa-triangle-exclamation"></i>Belum ada laporan</div></div>
+
+      <!-- Analytics collapsible -->
+      <div id="analytics-container" style="display:none;"></div>
+    </div>
+
+  </div><!-- /sidebar-main-content -->
+</div><!-- /sidebar -->
+
+<!-- ══ MAP ══ -->
+<div id="map-container">
+  <div id="map"></div>
+  <div class="map-info-bar" id="coord-display">Koordinat: —</div>
+</div>
+
+</div><!-- /app -->
+
+<!-- ══ MODAL TAMBAH JALAN ══ -->
+<div class="modal-overlay" id="modal-jalan">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-jalan-title">Tambah Data Jalan</div>
+      <button class="modal-close" onclick="closeModal('modal-jalan')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="jalan-id">
+      <div class="form-group">
+        <label class="form-label">Nama Jalan *</label>
+        <input type="text" class="form-control" id="jalan-nama" placeholder="Contoh: Jalan Diponegoro">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Status Jalan *</label>
+          <select class="form-control" id="jalan-status">
+            <option value="">-- Pilih --</option>
+            <option value="Nasional">Nasional</option>
+            <option value="Provinsi">Provinsi</option>
+            <option value="Kabupaten">Kabupaten</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Panjang</label>
+          <input type="text" class="form-control" id="jalan-panjang" readonly>
+          <div class="form-hint"><i class="fas fa-info-circle"></i> Dihitung otomatis</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Keterangan</label>
+        <textarea class="form-control" id="jalan-keterangan" rows="3" placeholder="Keterangan tambahan…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-jalan')">Batal</button>
+      <button class="btn btn-primary" onclick="saveJalan()"><i class="fas fa-save"></i> Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL TAMBAH PARSIL ══ -->
+<div class="modal-overlay" id="modal-parsil">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-parsil-title">Tambah Data Parsil</div>
+      <button class="modal-close" onclick="closeModal('modal-parsil')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="parsil-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Nama Parsil *</label>
+          <input type="text" class="form-control" id="parsil-nama" placeholder="Contoh: Kavling A1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Pemilik *</label>
+          <input type="text" class="form-control" id="parsil-pemilik" placeholder="Nama pemilik">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Status Sertifikat *</label>
+          <select class="form-control" id="parsil-status">
+            <option value="">-- Pilih --</option>
+            <option value="SHM">Hak Milik (SHM)</option>
+            <option value="HGB">Hak Guna Bangunan (HGB)</option>
+            <option value="HGU">Hak Guna Usaha (HGU)</option>
+            <option value="HP">Hak Pakai (HP)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">No. Sertifikat</label>
+          <input type="text" class="form-control" id="parsil-nosert" placeholder="Nomor sertifikat">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Luas</label>
+        <input type="text" class="form-control" id="parsil-luas" readonly>
+        <div class="form-hint"><i class="fas fa-info-circle"></i> Dihitung otomatis (m²)</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Keterangan</label>
+        <textarea class="form-control" id="parsil-keterangan" rows="3" placeholder="Keterangan tambahan…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-parsil')">Batal</button>
+      <button class="btn btn-warning" onclick="saveParsil()" style="color:#000"><i class="fas fa-save"></i> Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL FORM LAPORAN ══ -->
+<div class="modal-overlay" id="modal-laporan-form">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Laporkan Jalan Rusak</div>
+      <button class="modal-close" onclick="closeModal('modal-laporan-form')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Nama Pelapor <span style="color:var(--text-muted)">(opsional)</span></label>
+        <input type="text" class="form-control" id="lap-nama-pelapor" placeholder="Nama Anda (boleh dikosongkan)">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nama Jalan *</label>
+        <input type="text" class="form-control" id="lap-nama-jalan" placeholder="Nama jalan yang rusak">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Deskripsi Kerusakan</label>
+        <textarea class="form-control" id="lap-deskripsi" rows="3" placeholder="Jelaskan kondisi kerusakan…"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Koordinat Lokasi *</label>
+        <div class="coord-picker">
+          <input type="number" step="0.000001" class="form-control" id="lap-lat" placeholder="Latitude">
+          <input type="number" step="0.000001" class="form-control" id="lap-lng" placeholder="Longitude">
+          <button class="btn btn-ghost btn-sm" onclick="startPickCoord()"><i class="fas fa-crosshairs"></i> Pilih</button>
+        </div>
+        <div class="coord-picking-hint" id="coord-picking-hint">
+          <span class="pulse-dot"></span> Klik titik di peta untuk mengisi koordinat
+        </div>
+        <div class="form-hint"><i class="fas fa-info-circle"></i> Klik "Pilih" lalu klik di peta, atau isi manual</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Foto Kerusakan <span style="color:var(--text-muted)">(max 8MB, JPG/PNG/WebP)</span></label>
+        <div class="foto-upload-area" id="foto-upload-area">
+          <input type="file" id="lap-foto" accept="image/jpeg,image/png,image/webp" onchange="onFotoChange(this)">
+          <i class="fas fa-camera" style="font-size:24px;color:var(--text-muted);margin-bottom:6px;display:block;"></i>
+          <div style="font-size:12px;color:var(--text-muted);">Klik atau drag foto ke sini</div>
+          <img id="foto-preview" class="foto-preview">
+        </div>
+        <div class="foto-meta" id="foto-meta">
+          <i class="fas fa-map-pin"></i> <span id="foto-meta-text">—</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-laporan-form')">Batal</button>
+      <button class="btn btn-orange" onclick="saveLaporan()"><i class="fas fa-paper-plane"></i> Kirim Laporan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL DETAIL LAPORAN ══ -->
+<div class="modal-overlay" id="modal-laporan-detail">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Detail Laporan</div>
+      <button class="modal-close" onclick="closeModal('modal-laporan-detail')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body" id="laporan-detail-content"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-laporan-detail')">Tutup</button>
+      <button class="btn btn-danger btn-sm" id="btn-hapus-laporan"><i class="fas fa-trash"></i> Hapus</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MODAL ANALITIK ══ -->
+<div class="modal-overlay" id="modal-analytics">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <div class="modal-title"><i class="fas fa-chart-bar" style="color:var(--accent-blue)"></i> Analitik Laporan Jalan Rusak</div>
+      <button class="modal-close" onclick="closeModal('modal-analytics')"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <label style="font-size:12px;color:var(--text-secondary);font-weight:600">Rentang:</label>
+        <select id="analytics-tahun" class="form-control" style="width:auto;padding:6px 10px;" onchange="loadAnalytics()">
+          <option value="1" selected>1 Tahun</option>
+          <option value="2">2 Tahun</option>
+          <option value="3">3 Tahun</option>
+          <option value="5">5 Tahun</option>
+          <option value="10">10 Tahun</option>
+        </select>
+      </div>
+      <div id="analytics-content"><div class="empty-state"><i class="fas fa-spinner fa-spin"></i>Memuat data…</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ════════════════════════════════════════════
+// MAP INIT
+// ════════════════════════════════════════════
+const map = L.map('map', { center:[0.0261,109.3425], zoom:14 });
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
+map.on('mousemove', e => {
+  document.getElementById('coord-display').textContent =
+    `Lat: ${e.latlng.lat.toFixed(6)}, Lng: ${e.latlng.lng.toFixed(6)}`;
+});
+
+// ════════════════════════════════════════════
+// COLORS & STATE
+// ════════════════════════════════════════════
+const jalanColors  = {Nasional:'#ef4444',Provinsi:'#3b82f6',Kabupaten:'#22c55e'};
+const parsilColors = {SHM:'#f59e0b',HGB:'#8b5cf6',HGU:'#06b6d4',HP:'#ec4899'};
+const laporanColors= {pending:'#f59e0b',verified:'#388bfd',resolved:'#3fb950',urgent:'#ef4444'};
+
+let jalanLayers={}, parsilLayers={}, laporanLayers={}, clusterLayers=[];
+let jalanData=[], parsilData=[], laporanData=[];
+
+// Draw state
+let drawingMode=null, drawnPoints=[], tempMarkers=[], tempPolyline=null, clickTimer=null;
+// Edit state
+let editMode=null, editingId=null, editingPoints=[];
+let editVertexMarkers=[], editPreviewLayer=null;
+// Coord picking state
+let pickingCoord=false;
+
+let searchDebounce=null;
+
+// ════════════════════════════════════════════
+// TAB
+// ════════════════════════════════════════════
+function switchTab(tab) {
+  cancelDraw();
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>{
+    b.classList.toggle('active',(i===0&&tab==='jalan')||(i===1&&tab==='parsil')||(i===2&&tab==='laporan'));
+  });
+  ['jalan','parsil','laporan'].forEach(t=>{
+    document.getElementById('panel-'+t).classList.toggle('active', t===tab);
+  });
+}
+
+// ════════════════════════════════════════════
+// SEARCH
+// ════════════════════════════════════════════
+function onSearchInput(val) {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(()=>applySearch(val.trim()), 300);
+}
+
+function applySearch(q) {
+  loadJalan(q);
+  loadParsil(q);
+  if (q) loadLaporan(q);
+}
+
+function clearSearch() {
+  document.getElementById('global-search').value = '';
+  loadJalan(); loadParsil(); loadLaporan();
+}
+
+// ════════════════════════════════════════════
+// FILTER
+// ════════════════════════════════════════════
+function applyFilterJalan() {
+  const q = document.getElementById('global-search').value.trim();
+  loadJalan(q);
+}
+function applyFilterParsil() {
+  const q = document.getElementById('global-search').value.trim();
+  loadParsil(q);
+}
+function applyFilterLaporan() { loadLaporan(); }
+
+function buildJalanParams(q='') {
+  const p = new URLSearchParams();
+  const status = document.getElementById('filter-jalan-status').value;
+  const min    = document.getElementById('filter-jalan-min').value;
+  const max    = document.getElementById('filter-jalan-max').value;
+  if (status) p.set('status', status);
+  if (min)    p.set('min_panjang', min);
+  if (max)    p.set('max_panjang', max);
+  if (q)      p.set('q', q);
+  p.set('t', Date.now());
+  return p.toString();
+}
+function buildParsilParams(q='') {
+  const p = new URLSearchParams();
+  const status = document.getElementById('filter-parsil-status').value;
+  const min    = document.getElementById('filter-parsil-min').value;
+  const max    = document.getElementById('filter-parsil-max').value;
+  if (status) p.set('status', status);
+  if (min)    p.set('min_luas', min);
+  if (max)    p.set('max_luas', max);
+  if (q)      p.set('q', q);
+  p.set('t', Date.now());
+  return p.toString();
+}
+function buildLaporanParams() {
+  const p = new URLSearchParams();
+  const periode = document.getElementById('filter-laporan-periode').value;
+  const status  = document.getElementById('filter-laporan-status').value;
+  const q       = document.getElementById('global-search').value.trim();
+  if (periode !== 'all') p.set('bulan_terakhir', periode);
+  if (status)  p.set('status', status);
+  if (q)       p.set('q', q);
+  p.set('t', Date.now());
+  return p.toString();
+}
+
+// ════════════════════════════════════════════
+// DRAW
+// ════════════════════════════════════════════
+function startDrawJalan()  { cancelEditGeometri(false); cancelDraw(); drawingMode='jalan';  document.getElementById('draw-status-jalan').style.display='flex';  map.getContainer().style.cursor='crosshair'; }
+function startDrawParsil() { cancelEditGeometri(false); cancelDraw(); drawingMode='parsil'; document.getElementById('draw-status-parsil').style.display='flex'; map.getContainer().style.cursor='crosshair'; }
+function cancelDraw() {
+  drawingMode=null; drawnPoints=[];
+  if (clickTimer){ clearTimeout(clickTimer); clickTimer=null; }
+  tempMarkers.forEach(m=>map.removeLayer(m)); tempMarkers=[];
+  if (tempPolyline){ map.removeLayer(tempPolyline); tempPolyline=null; }
+  document.getElementById('draw-status-jalan').style.display='none';
+  document.getElementById('draw-status-parsil').style.display='none';
+  map.getContainer().style.cursor='';
+}
+
+map.on('click', e=>{
+  // Coord picking for laporan form
+  if (pickingCoord) {
+    document.getElementById('lap-lat').value = e.latlng.lat.toFixed(6);
+    document.getElementById('lap-lng').value = e.latlng.lng.toFixed(6);
+    stopPickCoord();
+    return;
+  }
+  if (!drawingMode) return;
+  if (clickTimer) clearTimeout(clickTimer);
+  clickTimer = setTimeout(()=>{
+    clickTimer=null;
+    drawnPoints.push([e.latlng.lat, e.latlng.lng]);
+    const m = L.circleMarker(e.latlng,{radius:5,color:drawingMode==='jalan'?'#388bfd':'#f59e0b',fillColor:'#fff',fillOpacity:1,weight:2}).addTo(map);
+    tempMarkers.push(m);
+    if (tempPolyline) map.removeLayer(tempPolyline);
+    if (drawingMode==='jalan') {
+      if (drawnPoints.length>1) tempPolyline=L.polyline(drawnPoints,{color:'#388bfd',weight:3,dashArray:'8,4',opacity:.7}).addTo(map);
+      document.getElementById('jalan-draw-hint').textContent=`${drawnPoints.length} titik — ${formatLength(calcLength(drawnPoints))} — Double-klik selesai`;
+    } else {
+      if (drawnPoints.length>2) tempPolyline=L.polygon(drawnPoints,{color:'#f59e0b',fillColor:'rgba(245,158,11,.2)',fillOpacity:1,weight:2,dashArray:'6,3'}).addTo(map);
+      document.getElementById('parsil-draw-hint').textContent=`${drawnPoints.length} titik — ${formatArea(calcArea(drawnPoints))} — Double-klik selesai`;
+    }
+  }, 180);
+});
+
+map.on('dblclick', e=>{
+  if (!drawingMode) return;
+  L.DomEvent.preventDefault(e);
+  if (clickTimer){ clearTimeout(clickTimer); clickTimer=null; }
+  if (drawingMode==='jalan') {
+    if (drawnPoints.length<2){ showToast('Minimal 2 titik!','error'); return; }
+    finishDrawJalan();
+  } else {
+    if (drawnPoints.length<3){ showToast('Minimal 3 titik!','error'); return; }
+    finishDrawParsil();
+  }
+});
+
+function finishDrawJalan() {
+  const pts=[...drawnPoints], len=calcLength(pts); cancelDraw();
+  document.getElementById('modal-jalan-title').textContent='Tambah Data Jalan';
+  document.getElementById('jalan-id').value='';
+  document.getElementById('jalan-nama').value='';
+  document.getElementById('jalan-status').value='';
+  document.getElementById('jalan-panjang').value=len.toFixed(2);
+  document.getElementById('jalan-keterangan').value='';
+  document.getElementById('modal-jalan').dataset.koordinat=JSON.stringify(pts);
+  openModal('modal-jalan');
+}
+function finishDrawParsil() {
+  const pts=[...drawnPoints], area=calcArea(pts); cancelDraw();
+  document.getElementById('modal-parsil-title').textContent='Tambah Data Parsil';
+  document.getElementById('parsil-id').value='';
+  document.getElementById('parsil-nama').value='';
+  document.getElementById('parsil-pemilik').value='';
+  document.getElementById('parsil-status').value='';
+  document.getElementById('parsil-nosert').value='';
+  document.getElementById('parsil-luas').value=area.toFixed(2);
+  document.getElementById('parsil-keterangan').value='';
+  document.getElementById('modal-parsil').dataset.koordinat=JSON.stringify(pts);
+  openModal('modal-parsil');
+}
+
+// ════════════════════════════════════════════
+// COORD PICK (for laporan form)
+// ════════════════════════════════════════════
+function startPickCoord() {
+  pickingCoord=true;
+  map.getContainer().style.cursor='crosshair';
+  document.getElementById('coord-picking-hint').style.display='flex';
+  // close modal temporarily to see map
+  document.getElementById('modal-laporan-form').style.opacity='0.3';
+  document.getElementById('modal-laporan-form').style.pointerEvents='none';
+}
+function stopPickCoord() {
+  pickingCoord=false;
+  map.getContainer().style.cursor='';
+  document.getElementById('coord-picking-hint').style.display='none';
+  document.getElementById('modal-laporan-form').style.opacity='';
+  document.getElementById('modal-laporan-form').style.pointerEvents='';
+  showToast('Koordinat berhasil dipilih','success');
+}
+
+// ════════════════════════════════════════════
+// FOTO UPLOAD
+// ════════════════════════════════════════════
+function onFotoChange(input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 8*1024*1024) { showToast('Ukuran foto melebihi 8MB','error'); input.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const prev = document.getElementById('foto-preview');
+    prev.src = e.target.result;
+    prev.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+  // Try read EXIF via client-side (basic check)
+  tryReadExifClient(file);
+}
+
+function tryReadExifClient(file) {
+  // Sederhana: cukup tampilkan nama file; EXIF dibaca di server
+  const metaEl = document.getElementById('foto-meta');
+  const metaText = document.getElementById('foto-meta-text');
+  metaEl.style.display='block';
+  metaText.textContent = `${file.name} (${(file.size/1024).toFixed(0)} KB) — GPS akan dibaca dari metadata foto`;
+}
+
+// ════════════════════════════════════════════
+// GEOMETRY HELPERS
+// ════════════════════════════════════════════
+function calcLength(pts) {
+  let t=0;
+  for (let i=0;i<pts.length-1;i++) t+=L.latLng(pts[i][0],pts[i][1]).distanceTo(L.latLng(pts[i+1][0],pts[i+1][1]));
+  return t;
+}
+function calcArea(pts) {
+  if (pts.length<3) return 0;
+  const R=6371000; let a=0; const n=pts.length;
+  for (let i=0;i<n;i++){
+    const j=(i+1)%n;
+    const lat1=pts[i][0]*Math.PI/180, lat2=pts[j][0]*Math.PI/180;
+    const dLon=(pts[j][1]-pts[i][1])*Math.PI/180;
+    a+=dLon*(2+Math.sin(lat1)+Math.sin(lat2));
+  }
+  return Math.abs(a*R*R/2);
+}
+function formatLength(m) { m=parseFloat(m)||0; return m>=1000?(m/1000).toFixed(2)+' km':m.toFixed(2)+' m'; }
+function formatArea(m2)  { m2=parseFloat(m2)||0; return m2>=10000?(m2/10000).toFixed(2)+' ha':m2.toFixed(2)+' m²'; }
+
+// ════════════════════════════════════════════
+// EDIT GEOMETRI
+// ════════════════════════════════════════════
+function editJalan(id) {
+  const item=jalanData.find(d=>d.id==id); if(!item) return;
+  cancelDraw(); cancelEditGeometri(false);
+  editMode='jalan'; editingId=id;
+  editingPoints=item.koordinat.map(p=>[parseFloat(p[0]),parseFloat(p[1])]);
+  if(jalanLayers[id]&&map.hasLayer(jalanLayers[id])) map.removeLayer(jalanLayers[id]);
+  const color=jalanColors[item.status_jalan]||'#888';
+  editPreviewLayer=L.polyline(editingPoints,{color,weight:4,opacity:.85,dashArray:'8,4'}).addTo(map);
+  map.fitBounds(editPreviewLayer.getBounds(),{padding:[60,60]});
+  renderVertexMarkers(); showEditPanel(item,'jalan');
+}
+function editParsil(id) {
+  const item=parsilData.find(d=>d.id==id); if(!item) return;
+  cancelDraw(); cancelEditGeometri(false);
+  editMode='parsil'; editingId=id;
+  editingPoints=item.koordinat.map(p=>[parseFloat(p[0]),parseFloat(p[1])]);
+  if(parsilLayers[id]&&map.hasLayer(parsilLayers[id])) map.removeLayer(parsilLayers[id]);
+  const color=parsilColors[item.status_sertifikat]||'#888';
+  editPreviewLayer=L.polygon(editingPoints,{color,fillColor:color,fillOpacity:.2,weight:3,dashArray:'8,4'}).addTo(map);
+  map.fitBounds(editPreviewLayer.getBounds(),{padding:[60,60]});
+  renderVertexMarkers(); showEditPanel(item,'parsil');
+}
+
+function renderVertexMarkers() {
+  editVertexMarkers.forEach(m=>{ if(map.hasLayer(m)) map.removeLayer(m); }); editVertexMarkers=[];
+  const isJalan=editMode==='jalan';
+  const item=isJalan?jalanData.find(d=>d.id==editingId):parsilData.find(d=>d.id==editingId);
+  const color=isJalan?(jalanColors[item?.status_jalan]||'#388bfd'):(parsilColors[item?.status_sertifikat]||'#f59e0b');
+  editingPoints.forEach((pt,idx)=>{
+    const icon=L.divIcon({className:'',html:`<div style="width:18px;height:18px;background:${color};border:3px solid #fff;border-radius:50%;cursor:grab;box-shadow:0 2px 8px rgba(0,0,0,.6);position:relative;"><div style="position:absolute;top:-18px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);color:#fff;font-size:9px;font-family:monospace;padding:1px 4px;border-radius:3px;white-space:nowrap;">${idx+1}</div></div>`,iconSize:[0,0],iconAnchor:[9,9]});
+    const marker=L.marker([pt[0],pt[1]],{icon,zIndexOffset:2000,draggable:true}).addTo(map);
+    marker.on('dragstart',()=>map.dragging.disable());
+    marker.on('drag',e=>{ const ll=e.target.getLatLng(); editingPoints[idx]=[ll.lat,ll.lng]; editPreviewLayer.setLatLngs([...editingPoints]); updateEditStats(); });
+    marker.on('dragend',()=>map.dragging.enable());
+    marker.on('contextmenu',()=>{
+      const minPts=editMode==='jalan'?2:3;
+      if(editingPoints.length<=minPts){ showToast(`Minimal ${minPts} titik!`,'error'); return; }
+      editingPoints.splice(idx,1); editPreviewLayer.setLatLngs([...editingPoints]); renderVertexMarkers(); showToast(`Titik ${idx+1} dihapus`,'info');
+    });
+    editVertexMarkers.push(marker);
+  });
+  updateEditStats();
+}
+
+function updateEditStats() {
+  document.getElementById('edit-stat-count').textContent=editingPoints.length;
+  const val=editMode==='jalan'?formatLength(calcLength(editingPoints)):formatArea(calcArea(editingPoints));
+  document.getElementById('edit-stat-value').textContent=val;
+  const inpLen =document.getElementById('ep-jalan-panjang');
+  const inpLuas=document.getElementById('ep-parsil-luas');
+  if(inpLen)  inpLen.value =calcLength(editingPoints).toFixed(2);
+  if(inpLuas) inpLuas.value=calcArea(editingPoints).toFixed(2);
+}
+
+function showEditPanel(item, mode) {
+  const panel=document.getElementById('sidebar-edit-panel');
+  panel.className='active'+(mode==='parsil'?' parsil-mode':'');
+  document.getElementById('edit-panel-name').textContent=mode==='jalan'?item.nama_jalan:item.nama_parsil;
+  document.getElementById('edit-panel-tag').textContent=mode==='jalan'?'Jalan':'Parsil';
+  document.getElementById('edit-panel-tag').className='mode-tag'+(mode==='parsil'?' parsil':'');
+  document.getElementById('edit-stat-label').textContent=mode==='jalan'?'Panjang':'Luas';
+  const formEl=document.getElementById('edit-panel-form-content');
+  if(mode==='jalan'){
+    formEl.innerHTML=`
+      <div class="form-group"><label class="form-label">Nama Jalan *</label><input type="text" class="form-control" id="ep-jalan-nama" value="${esc(item.nama_jalan)}"></div>
+      <div class="form-group"><label class="form-label">Status *</label><select class="form-control" id="ep-jalan-status">
+        <option value="Nasional" ${item.status_jalan==='Nasional'?'selected':''}>Nasional</option>
+        <option value="Provinsi" ${item.status_jalan==='Provinsi'?'selected':''}>Provinsi</option>
+        <option value="Kabupaten" ${item.status_jalan==='Kabupaten'?'selected':''}>Kabupaten</option>
+      </select></div>
+      <div class="form-group"><label class="form-label">Panjang (m)</label><input type="text" class="form-control" id="ep-jalan-panjang" readonly value="${parseFloat(item.panjang_meter).toFixed(2)}"><div class="form-hint">Diperbarui otomatis saat drag</div></div>
+      <div class="form-group"><label class="form-label">Keterangan</label><textarea class="form-control" id="ep-jalan-keterangan" rows="2">${esc(item.keterangan||'')}</textarea></div>`;
+  } else {
+    formEl.innerHTML=`
+      <div class="form-group"><label class="form-label">Nama Parsil *</label><input type="text" class="form-control" id="ep-parsil-nama" value="${esc(item.nama_parsil)}"></div>
+      <div class="form-group"><label class="form-label">Pemilik *</label><input type="text" class="form-control" id="ep-parsil-pemilik" value="${esc(item.pemilik)}"></div>
+      <div class="form-group"><label class="form-label">Status *</label><select class="form-control" id="ep-parsil-status">
+        <option value="SHM" ${item.status_sertifikat==='SHM'?'selected':''}>SHM</option>
+        <option value="HGB" ${item.status_sertifikat==='HGB'?'selected':''}>HGB</option>
+        <option value="HGU" ${item.status_sertifikat==='HGU'?'selected':''}>HGU</option>
+        <option value="HP"  ${item.status_sertifikat==='HP' ?'selected':''}>HP</option>
+      </select></div>
+      <div class="form-group"><label class="form-label">No. Sertifikat</label><input type="text" class="form-control" id="ep-parsil-nosert" value="${esc(item.nomor_sertifikat||'')}"></div>
+      <div class="form-group"><label class="form-label">Luas (m²)</label><input type="text" class="form-control" id="ep-parsil-luas" readonly value="${parseFloat(item.luas_meter2).toFixed(2)}"><div class="form-hint">Diperbarui otomatis saat drag</div></div>
+      <div class="form-group"><label class="form-label">Keterangan</label><textarea class="form-control" id="ep-parsil-keterangan" rows="2">${esc(item.keterangan||'')}</textarea></div>`;
+  }
+  document.getElementById('sidebar-main-content').style.display='none';
+  updateEditStats();
+}
+
+async function saveEditGeometri() {
+  if (!editMode||!editingId) return;
+  let payload, url;
+  if (editMode==='jalan') {
+    const nama=document.getElementById('ep-jalan-nama')?.value.trim();
+    const status=document.getElementById('ep-jalan-status')?.value;
+    const ket=document.getElementById('ep-jalan-keterangan')?.value.trim()||'';
+    if (!nama||!status){ showToast('Nama dan status wajib!','error'); return; }
+    payload={nama_jalan:nama,status_jalan:status,panjang_meter:calcLength(editingPoints),keterangan:ket,koordinat:editingPoints};
+    url=`api/jalan.php?id=${editingId}`;
+  } else {
+    const nama=document.getElementById('ep-parsil-nama')?.value.trim();
+    const pemilik=document.getElementById('ep-parsil-pemilik')?.value.trim();
+    const status=document.getElementById('ep-parsil-status')?.value;
+    const nosert=document.getElementById('ep-parsil-nosert')?.value.trim()||'';
+    const ket=document.getElementById('ep-parsil-keterangan')?.value.trim()||'';
+    if (!nama||!pemilik||!status){ showToast('Nama, pemilik, dan status wajib!','error'); return; }
+    payload={nama_parsil:nama,pemilik,status_sertifikat:status,nomor_sertifikat:nosert,luas_meter2:calcArea(editingPoints),keterangan:ket,koordinat:editingPoints};
+    url=`api/parsil.php?id=${editingId}`;
+  }
+  try {
+    const res=await fetch(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const data=await res.json();
+    if(data.status==='success'){ showToast('Berhasil disimpan!','success'); cancelEditGeometri(true); }
+    else showToast(data.message||'Gagal','error');
+  } catch(err){ showToast('Error: '+err.message,'error'); }
+}
+
+function cancelEditGeometri(doReload=true) {
+  editVertexMarkers.forEach(m=>{ if(map.hasLayer(m)) map.removeLayer(m); }); editVertexMarkers=[];
+  if(editPreviewLayer&&map.hasLayer(editPreviewLayer)) map.removeLayer(editPreviewLayer); editPreviewLayer=null;
+  editMode=null; editingId=null; editingPoints=[];
+  document.getElementById('sidebar-edit-panel').className='';
+  document.getElementById('sidebar-main-content').style.display='';
+  map.dragging.enable();
+  if(doReload){ loadJalan(); loadParsil(); }
+}
+
+// ════════════════════════════════════════════
+// SAVE NEW JALAN / PARSIL
+// ════════════════════════════════════════════
+async function saveJalan() {
+  const id=document.getElementById('jalan-id').value;
+  const nama=document.getElementById('jalan-nama').value.trim();
+  const status=document.getElementById('jalan-status').value;
+  const panjang=parseFloat(document.getElementById('jalan-panjang').value)||0;
+  const keterangan=document.getElementById('jalan-keterangan').value.trim();
+  const koordinat=JSON.parse(document.getElementById('modal-jalan').dataset.koordinat||'[]');
+  if(!nama||!status){ showToast('Nama dan status wajib!','error'); return; }
+  if(!id&&koordinat.length<2){ showToast('Koordinat tidak valid!','error'); return; }
+  try {
+    const res=await fetch(id?`api/jalan.php?id=${id}`:'api/jalan.php',{
+      method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({nama_jalan:nama,status_jalan:status,panjang_meter:panjang,keterangan,koordinat})
+    });
+    const data=await res.json();
+    if(data.status==='success'){ showToast(data.message,'success'); closeModal('modal-jalan'); loadJalan(); }
+    else showToast(data.message||'Gagal','error');
+  } catch(err){ showToast('Error: '+err.message,'error'); }
+}
+
+async function saveParsil() {
+  const id=document.getElementById('parsil-id').value;
+  const nama=document.getElementById('parsil-nama').value.trim();
+  const pemilik=document.getElementById('parsil-pemilik').value.trim();
+  const status=document.getElementById('parsil-status').value;
+  const nosert=document.getElementById('parsil-nosert').value.trim();
+  const luas=parseFloat(document.getElementById('parsil-luas').value)||0;
+  const keterangan=document.getElementById('parsil-keterangan').value.trim();
+  const koordinat=JSON.parse(document.getElementById('modal-parsil').dataset.koordinat||'[]');
+  if(!nama||!pemilik||!status){ showToast('Nama, pemilik, dan status wajib!','error'); return; }
+  if(!id&&koordinat.length<3){ showToast('Koordinat tidak valid!','error'); return; }
+  try {
+    const res=await fetch(id?`api/parsil.php?id=${id}`:'api/parsil.php',{
+      method:id?'PUT':'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({nama_parsil:nama,pemilik,status_sertifikat:status,nomor_sertifikat:nosert,luas_meter2:luas,keterangan,koordinat})
+    });
+    const data=await res.json();
+    if(data.status==='success'){ showToast(data.message,'success'); closeModal('modal-parsil'); loadParsil(); }
+    else showToast(data.message||'Gagal','error');
+  } catch(err){ showToast('Error: '+err.message,'error'); }
+}
+
+// ════════════════════════════════════════════
+// SAVE LAPORAN
+// ════════════════════════════════════════════
+async function saveLaporan() {
+  const namaJalan=document.getElementById('lap-nama-jalan').value.trim();
+  const lat=parseFloat(document.getElementById('lap-lat').value)||0;
+  const lng=parseFloat(document.getElementById('lap-lng').value)||0;
+  if(!namaJalan){ showToast('Nama jalan wajib diisi!','error'); return; }
+  if(!lat||!lng){ showToast('Koordinat wajib diisi!','error'); return; }
+
+  const fd=new FormData();
+  fd.append('nama_jalan', namaJalan);
+  fd.append('lat', lat);
+  fd.append('lng', lng);
+  fd.append('deskripsi', document.getElementById('lap-deskripsi').value.trim());
+  fd.append('nama_pelapor', document.getElementById('lap-nama-pelapor').value.trim());
+  const fotoInput=document.getElementById('lap-foto');
+  if(fotoInput.files[0]) fd.append('foto', fotoInput.files[0]);
+
+  try {
+    const res=await fetch('api/laporan.php',{method:'POST',body:fd});
+    const data=await res.json();
+    if(data.status==='success'){
+      showToast('Laporan berhasil dikirim!','success');
+      closeModal('modal-laporan-form');
+      resetLaporanForm();
+      loadLaporan();
+    } else showToast(data.message||'Gagal','error');
+  } catch(err){ showToast('Error: '+err.message,'error'); }
+}
+
+function resetLaporanForm() {
+  ['lap-nama-pelapor','lap-nama-jalan','lap-deskripsi','lap-lat','lap-lng'].forEach(id=>{ document.getElementById(id).value=''; });
+  document.getElementById('lap-foto').value='';
+  document.getElementById('foto-preview').style.display='none';
+  document.getElementById('foto-meta').style.display='none';
+}
+
+// ════════════════════════════════════════════
+// LOAD & RENDER — JALAN
+// ════════════════════════════════════════════
+async function loadJalan(q='') {
+  try {
+    const text=await(await fetch('api/jalan.php?'+buildJalanParams(q))).text();
+    let data; try{data=JSON.parse(text);}catch(e){console.error('Non-JSON jalan:',text);return;}
+    Object.values(jalanLayers).forEach(l=>{ if(map.hasLayer(l)) map.removeLayer(l); }); jalanLayers={};
+    jalanData=data.data||[];
+    jalanData.forEach(renderJalanLayer);
+    renderJalanList();
+    document.getElementById('count-jalan').textContent=jalanData.length;
+  } catch(e){console.error(e);}
+}
+
+function renderJalanLayer(item) {
+  if(!item.koordinat||item.koordinat.length<2) return;
+  const color=jalanColors[item.status_jalan]||'#888';
+  const layer=L.polyline(item.koordinat,{color,weight:5,opacity:.9,lineJoin:'round',lineCap:'round'}).addTo(map);
+  layer.bindPopup(`<div style="font-family:'Plus Jakarta Sans',sans-serif;min-width:200px;">
+    <b style="font-size:14px;">${esc(item.nama_jalan)}</b><br>
+    <span style="font-size:12px;color:#555;">Status: Jalan ${item.status_jalan}<br>Panjang: ${formatLength(item.panjang_meter)}
+    ${item.keterangan?'<br>Ket: '+esc(item.keterangan):''}</span></div>`);
+  layer.on('click',()=>layer.openPopup());
+  jalanLayers[item.id]=layer;
+}
+
+function renderJalanList() {
+  const el=document.getElementById('list-jalan');
+  if(!jalanData.length){el.innerHTML='<div class="empty-state"><i class="fas fa-road"></i>Belum ada data jalan</div>';return;}
+  el.innerHTML=jalanData.map(item=>{
+    const sc=item.status_jalan.toLowerCase();
+    return `<div class="data-item ${sc}">
+      <div class="item-header"><div class="item-name">${esc(item.nama_jalan)}</div><span class="item-badge badge-${sc}">${item.status_jalan}</span></div>
+      <div class="item-meta"><span><i class="fas fa-ruler-horizontal"></i> ${formatLength(item.panjang_meter)}</span></div>
+      <div class="item-actions">
+        <button class="btn btn-ghost btn-sm" onclick="zoomToJalan(${item.id})"><i class="fas fa-search-location"></i> Tampilkan</button>
+        <button class="btn btn-ghost btn-sm" onclick="editJalan(${item.id})"><i class="fas fa-pen-to-square"></i> Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteJalan(${item.id})"><i class="fas fa-trash"></i></button>
+      </div></div>`;
+  }).join('');
+}
+
+function zoomToJalan(id){ const l=jalanLayers[id]; if(l){map.fitBounds(l.getBounds(),{padding:[40,40]});l.openPopup();} }
+
+async function deleteJalan(id) {
+  const item=jalanData.find(d=>d.id==id);
+  if(!item||!confirm(`Hapus jalan "${item.nama_jalan}"?`)) return;
+  try {
+    const data=await(await fetch(`api/jalan.php?id=${id}`,{method:'DELETE'})).json();
+    if(data.status==='success'){showToast(data.message,'success');loadJalan();}
+    else showToast(data.message,'error');
+  } catch(e){showToast('Error: '+e.message,'error');}
+}
+
+// ════════════════════════════════════════════
+// LOAD & RENDER — PARSIL
+// ════════════════════════════════════════════
+async function loadParsil(q='') {
+  try {
+    const text=await(await fetch('api/parsil.php?'+buildParsilParams(q))).text();
+    let data; try{data=JSON.parse(text);}catch(e){console.error('Non-JSON parsil:',text);return;}
+    Object.values(parsilLayers).forEach(l=>{ if(map.hasLayer(l)) map.removeLayer(l); }); parsilLayers={};
+    parsilData=data.data||[];
+    parsilData.forEach(renderParsilLayer);
+    renderParsilList();
+    document.getElementById('count-parsil').textContent=parsilData.length;
+  } catch(e){console.error(e);}
+}
+
+function renderParsilLayer(item) {
+  if(!item.koordinat||item.koordinat.length<3) return;
+  const color=parsilColors[item.status_sertifikat]||'#888';
+  const layer=L.polygon(item.koordinat,{color,fillColor:color,fillOpacity:.3,weight:2.5,opacity:.9}).addTo(map);
+  layer.bindPopup(`<div style="font-family:'Plus Jakarta Sans',sans-serif;min-width:220px;">
+    <b style="font-size:14px;">${esc(item.nama_parsil)}</b><br>
+    <span style="font-size:12px;color:#555;">Pemilik: ${esc(item.pemilik)}<br>Status: ${item.status_sertifikat}
+    ${item.nomor_sertifikat?'<br>No: '+esc(item.nomor_sertifikat):''}
+    <br>Luas: ${formatArea(item.luas_meter2)}</span></div>`);
+  layer.on('click',()=>layer.openPopup());
+  parsilLayers[item.id]=layer;
+}
+
+function renderParsilList() {
+  const el=document.getElementById('list-parsil');
+  if(!parsilData.length){el.innerHTML='<div class="empty-state"><i class="fas fa-map"></i>Belum ada data parsil</div>';return;}
+  el.innerHTML=parsilData.map(item=>{
+    const sc=item.status_sertifikat.toLowerCase();
+    return `<div class="data-item ${sc}">
+      <div class="item-header"><div class="item-name">${esc(item.nama_parsil)}</div><span class="item-badge badge-${sc}">${item.status_sertifikat}</span></div>
+      <div class="item-meta"><span><i class="fas fa-user"></i> ${esc(item.pemilik)}</span><span><i class="fas fa-expand"></i> ${formatArea(item.luas_meter2)}</span></div>
+      <div class="item-actions">
+        <button class="btn btn-ghost btn-sm" onclick="zoomToParsil(${item.id})"><i class="fas fa-search-location"></i> Tampilkan</button>
+        <button class="btn btn-ghost btn-sm" onclick="editParsil(${item.id})"><i class="fas fa-pen-to-square"></i> Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteParsil(${item.id})"><i class="fas fa-trash"></i></button>
+      </div></div>`;
+  }).join('');
+}
+
+function zoomToParsil(id){ const l=parsilLayers[id]; if(l){map.fitBounds(l.getBounds(),{padding:[40,40]});l.openPopup();} }
+
+async function deleteParsil(id) {
+  const item=parsilData.find(d=>d.id==id);
+  if(!item||!confirm(`Hapus parsil "${item.nama_parsil}"?`)) return;
+  try {
+    const data=await(await fetch(`api/parsil.php?id=${id}`,{method:'DELETE'})).json();
+    if(data.status==='success'){showToast(data.message,'success');loadParsil();}
+    else showToast(data.message,'error');
+  } catch(e){showToast('Error: '+e.message,'error');}
+}
+
+// ════════════════════════════════════════════
+// LOAD & RENDER — LAPORAN
+// ════════════════════════════════════════════
+async function loadLaporan() {
+  try {
+    const text=await(await fetch('api/laporan.php?'+buildLaporanParams())).text();
+    let resp; try{resp=JSON.parse(text);}catch(e){console.error('Non-JSON laporan:',text);return;}
+    // Clear existing layers
+    Object.values(laporanLayers).forEach(l=>{ if(map.hasLayer(l)) map.removeLayer(l); }); laporanLayers={};
+    clusterLayers.forEach(l=>{ if(map.hasLayer(l)) map.removeLayer(l); }); clusterLayers=[];
+    laporanData=resp.data||[];
+    laporanData.forEach(renderLaporanLayer);
+    renderClusterLayers(resp.clusters||[]);
+    renderLaporanList();
+    document.getElementById('count-laporan').textContent=laporanData.length;
+  } catch(e){console.error(e);}
+}
+
+function renderLaporanLayer(item) {
+  if(!item.lat||!item.lng) return;
+  const isUrgent = isLaporanUrgent(item.id);
+  const color = isUrgent ? laporanColors.urgent : (laporanColors[item.status]||'#888');
+  const r = isUrgent ? 10 : 7;
+  const layer = L.circleMarker([item.lat, item.lng], {
+    radius:r, color:'#fff', weight:2,
+    fillColor:color, fillOpacity:.9
+  }).addTo(map);
+  layer.bindPopup(buildLaporanPopup(item, isUrgent));
+  layer.on('click', ()=>layer.openPopup());
+  laporanLayers[item.id]=layer;
+}
+
+// urgentIds: set of IDs yang masuk cluster
+let urgentIds = new Set();
+function isLaporanUrgent(id){ return urgentIds.has(id); }
+
+function renderClusterLayers(clusters) {
+  urgentIds = new Set();
+  clusters.forEach(c=>{
+    c.ids.forEach(id=>urgentIds.add(id));
+    const size = Math.min(36, 24 + c.count*2);
+    const icon = L.divIcon({
+      className:'',
+      html:`<div class="cluster-marker" style="width:${size}px;height:${size}px;">${c.count}</div>`,
+      iconSize:[size,size], iconAnchor:[size/2,size/2]
+    });
+    const m = L.marker([c.lat, c.lng], {icon, zIndexOffset:3000}).addTo(map);
+    m.bindPopup(`<div style="font-family:'Plus Jakarta Sans',sans-serif;min-width:180px;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+        <span style="background:#ef444420;color:#f87171;border:1px solid #ef444440;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;">⚠ URGENT</span>
+      </div>
+      <b>${esc(c.nama_jalan)}</b><br>
+      <span style="font-size:12px;color:#555;">${c.count} laporan dalam radius 50m</span>
+    </div>`);
+    clusterLayers.push(m);
+  });
+  // Re-render laporan layers with updated urgentIds
+  Object.values(laporanLayers).forEach(l=>map.removeLayer(l)); laporanLayers={};
+  laporanData.forEach(renderLaporanLayer);
+}
+
+function buildLaporanPopup(item, isUrgent) {
+  const urgentHtml = isUrgent ? `<div style="margin-bottom:6px;"><span style="background:#ef444420;color:#f87171;border:1px solid #ef444440;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;">⚠ URGENT</span></div>` : '';
+  return `<div style="font-family:'Plus Jakarta Sans',sans-serif;min-width:200px;">
+    ${urgentHtml}
+    <b style="font-size:14px;">${esc(item.nama_jalan)}</b><br>
+    <span style="font-size:12px;color:#555;">
+      ${item.nama_pelapor?'Pelapor: '+esc(item.nama_pelapor)+'<br>':''}
+      ${item.deskripsi?esc(item.deskripsi)+'<br>':''}
+      Status: ${item.status}<br>
+      ${formatTanggal(item.tanggal_input)}
+    </span>
+    ${item.foto_path?`<br><img src="${item.foto_path}" style="width:100%;max-height:120px;object-fit:cover;border-radius:4px;margin-top:6px;">`:''}
+    <br><button onclick="showLaporanDetail(${item.id})" style="margin-top:6px;padding:4px 10px;background:#388bfd;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-family:inherit;">Detail</button>
+  </div>`;
+}
+
+function renderLaporanList() {
+  const el=document.getElementById('list-laporan');
+  if(!laporanData.length){el.innerHTML='<div class="empty-state"><i class="fas fa-triangle-exclamation"></i>Belum ada laporan</div>';return;}
+  el.innerHTML=laporanData.map(item=>{
+    const isUrgent=isLaporanUrgent(item.id);
+    const sc=item.status.toLowerCase();
+    return `<div class="data-item ${sc}${isUrgent?' urgent':''}">
+      <div class="item-header">
+        <div class="item-name">${esc(item.nama_jalan)}</div>
+        <div style="display:flex;gap:4px;align-items:center;">
+          ${isUrgent?'<span class="item-badge badge-urgent">URGENT</span>':''}
+          <span class="item-badge badge-${sc}">${item.status}</span>
+        </div>
+      </div>
+      <div class="item-meta">
+        ${item.nama_pelapor?`<span><i class="fas fa-user"></i> ${esc(item.nama_pelapor)}</span>`:''}
+        <span><i class="fas fa-calendar"></i> ${formatTanggal(item.tanggal_input)}</span>
+      </div>
+      ${item.deskripsi?`<div style="font-size:11px;color:var(--text-muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(item.deskripsi)}</div>`:''}
+      <div class="item-actions">
+        <button class="btn btn-ghost btn-sm" onclick="zoomToLaporan(${item.id})"><i class="fas fa-search-location"></i> Tampilkan</button>
+        <button class="btn btn-ghost btn-sm" onclick="showLaporanDetail(${item.id})"><i class="fas fa-eye"></i> Detail</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteLaporan(${item.id})"><i class="fas fa-trash"></i></button>
+      </div></div>`;
+  }).join('');
+}
+
+function zoomToLaporan(id) {
+  const item=laporanData.find(d=>d.id==id);
+  if(!item||!item.lat) return;
+  map.setView([item.lat,item.lng],17);
+  if(laporanLayers[id]) laporanLayers[id].openPopup();
+}
+
+function showLaporanDetail(id) {
+  const item=laporanData.find(d=>d.id==id); if(!item) return;
+  const isUrgent=isLaporanUrgent(item.id);
+  const content=document.getElementById('laporan-detail-content');
+  content.innerHTML=`
+    ${item.foto_path?`<img src="${item.foto_path}" class="laporan-foto" onerror="this.style.display='none'">`:''}
+    ${isUrgent?`<div style="margin-bottom:12px;"><span class="cluster-badge"><i class="fas fa-triangle-exclamation"></i> URGENT — Banyak laporan di titik ini</span></div>`:''}
+    <div class="info-grid">
+      <div class="info-cell"><div class="info-cell-lbl">Nama Jalan</div><div class="info-cell-val">${esc(item.nama_jalan)}</div></div>
+      <div class="info-cell"><div class="info-cell-lbl">Pelapor</div><div class="info-cell-val">${esc(item.nama_pelapor||'Anonim')}</div></div>
+      <div class="info-cell"><div class="info-cell-lbl">Tanggal</div><div class="info-cell-val">${formatTanggal(item.tanggal_input)}</div></div>
+      <div class="info-cell"><div class="info-cell-lbl">Koordinat</div><div class="info-cell-val" style="font-family:monospace;font-size:11px;">${item.lat?.toFixed(5)}, ${item.lng?.toFixed(5)}</div></div>
+    </div>
+    ${item.deskripsi?`<div style="margin-top:12px;padding:10px;background:var(--bg-dark);border-radius:var(--radius);font-size:13px;">${esc(item.deskripsi)}</div>`:''}
+    <div style="margin-top:12px;display:flex;align-items:center;gap:10px;">
+      <span style="font-size:12px;color:var(--text-secondary);font-weight:600;">Status:</span>
+      <select class="status-select" id="detail-status-select" onchange="updateLaporanStatus(${item.id},this.value)">
+        <option value="pending"  ${item.status==='pending' ?'selected':''}>Pending</option>
+        <option value="verified" ${item.status==='verified'?'selected':''}>Verified</option>
+        <option value="resolved" ${item.status==='resolved'?'selected':''}>Resolved</option>
+      </select>
+    </div>
+    ${item.foto_lat?`<div style="margin-top:8px;font-size:11px;color:var(--text-muted);"><i class="fas fa-map-pin"></i> GPS Foto: ${item.foto_lat?.toFixed(5)}, ${item.foto_lng?.toFixed(5)}</div>`:''}
+    ${item.foto_datetime?`<div style="font-size:11px;color:var(--text-muted);"><i class="fas fa-clock"></i> Waktu foto: ${item.foto_datetime}</div>`:''}`;
+  document.getElementById('btn-hapus-laporan').onclick=()=>deleteLaporan(item.id,true);
+  openModal('modal-laporan-detail');
+}
+
+async function updateLaporanStatus(id, status) {
+  try {
+    const res=await fetch(`api/laporan.php?id=${id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+    const data=await res.json();
+    if(data.status==='success'){ showToast('Status diperbarui','success'); loadLaporan(); }
+    else showToast(data.message,'error');
+  } catch(e){showToast('Error: '+e.message,'error');}
+}
+
+async function deleteLaporan(id, fromDetail=false) {
+  const item=laporanData.find(d=>d.id==id);
+  if(!item||!confirm(`Hapus laporan ini?`)) return;
+  try {
+    const data=await(await fetch(`api/laporan.php?id=${id}`,{method:'DELETE'})).json();
+    if(data.status==='success'){
+      showToast('Laporan dihapus','success');
+      if(fromDetail) closeModal('modal-laporan-detail');
+      loadLaporan();
+    } else showToast(data.message,'error');
+  } catch(e){showToast('Error: '+e.message,'error');}
+}
+
+// ════════════════════════════════════════════
+// ANALYTICS
+// ════════════════════════════════════════════
+async function loadAnalytics() {
+  openModal('modal-analytics');
+  document.getElementById('analytics-content').innerHTML='<div class="empty-state"><i class="fas fa-spinner fa-spin"></i>Memuat data…</div>';
+  const tahun=document.getElementById('analytics-tahun').value;
+  try {
+    const text=await(await fetch(`api/laporan.php?action=analytics&tahun=${tahun}&t=${Date.now()}`)).text();
+    const resp=JSON.parse(text);
+    renderAnalytics(resp);
+  } catch(e){ document.getElementById('analytics-content').innerHTML='<div class="empty-state"><i class="fas fa-exclamation-circle"></i>Gagal memuat data</div>'; }
+}
+
+function renderAnalytics(d) {
+  const total=d.per_jalan.reduce((s,r)=>s+(+r.total),0);
+  const resolved=d.per_jalan.reduce((s,r)=>s+(+r.resolved),0);
+  const seringHtml = d.sering_rusak.length
+    ? d.sering_rusak.map(r=>{
+        const pct=Math.round((+r.total/Math.max(...d.sering_rusak.map(x=>+x.total)))*100);
+        return `<div class="sering-rusak-item">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(r.nama_jalan)}</div>
+            <div class="sering-rusak-bar-wrap"><div class="sering-rusak-bar" style="width:${pct}%"></div></div>
+          </div>
+          <div style="margin-left:10px;text-align:right;flex-shrink:0;">
+            <div style="font-weight:700;color:var(--accent-red);font-family:'Space Mono',monospace;">${r.total}x</div>
+            <div style="font-size:10px;color:var(--text-muted);">laporan</div>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div style="font-size:12px;color:var(--text-muted);text-align:center;padding:8px;">Tidak ada jalan sering rusak dalam periode ini</div>';
+
+  // Tren chart
+  const maxTren=Math.max(...d.tren_bulanan.map(t=>+t.total),1);
+  const trenHtml=d.tren_bulanan.map(t=>{
+    const h=Math.max(4, Math.round((+t.total/maxTren)*52));
+    return `<div class="tren-bar-wrap" title="${t.bulan}: ${t.total} laporan">
+      <div class="tren-bar" style="height:${h}px;"></div>
+      <div class="tren-lbl">${t.bulan.slice(5)}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('analytics-content').innerHTML=`
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-box-val" style="color:var(--accent-red)">${total}</div><div class="stat-box-lbl">Total Laporan</div></div>
+      <div class="stat-box"><div class="stat-box-val" style="color:var(--accent-green)">${resolved}</div><div class="stat-box-lbl">Terselesaikan</div></div>
+      <div class="stat-box"><div class="stat-box-val" style="color:var(--accent-blue)">${d.sering_rusak.length}</div><div class="stat-box-lbl">Jalan Sering Rusak</div></div>
+      <div class="stat-box"><div class="stat-box-val" style="color:var(--accent-yellow)">${total-resolved}</div><div class="stat-box-lbl">Belum Selesai</div></div>
+    </div>
+    <div style="margin-bottom:12px;">
+      <div class="analytics-title">Tren 12 Bulan Terakhir</div>
+      <div class="tren-chart">${trenHtml||'<div style="font-size:11px;color:var(--text-muted)">Belum ada data</div>'}</div>
+    </div>
+    <div>
+      <div class="analytics-title">
+        <span>Jalan Sering Rusak <span style="font-size:10px;color:var(--text-muted)">(≥3 laporan / ${d.rentang_tahun} tahun)</span></span>
+      </div>
+      <div class="sering-rusak-list">${seringHtml}</div>
+    </div>
+    ${d.per_jalan.length?`
+    <div style="margin-top:14px;">
+      <div class="analytics-title">Rincian Per Jalan</div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        ${d.per_jalan.map(r=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--bg-dark);border-radius:5px;font-size:12px;">
+            <div>
+              <div style="font-weight:600;">${esc(r.nama_jalan)}</div>
+              <div style="font-size:10px;color:var(--text-muted);">Terakhir: ${formatTanggal(r.terakhir)}</div>
+            </div>
+            <div style="display:flex;gap:6px;text-align:center;font-size:11px;">
+              <div style="background:rgba(245,158,11,.15);color:#fbbf24;padding:2px 7px;border-radius:4px;">${r.pending} pending</div>
+              <div style="background:rgba(63,185,80,.15);color:#4ade80;padding:2px 7px;border-radius:4px;">${r.resolved} selesai</div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`:''}`;
+}
+
+// ════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════
+function openModal(id)  { document.getElementById(id).classList.add('active'); }
+function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+document.querySelectorAll('.modal-overlay').forEach(o=>{
+  o.addEventListener('click', e=>{ if(e.target===o) o.classList.remove('active'); });
+});
+
+function showToast(msg, type='info') {
+  const icons={success:'fa-check-circle',error:'fa-exclamation-circle',info:'fa-info-circle'};
+  const t=document.createElement('div');
+  t.className=`toast ${type}`;
+  t.innerHTML=`<i class="fas ${icons[type]}"></i> ${msg}`;
+  document.getElementById('toast-container').appendChild(t);
+  setTimeout(()=>{ t.style.cssText+='opacity:0;transform:translateX(100%);transition:.3s;'; setTimeout(()=>t.remove(),300); },3500);
+}
+
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function formatTanggal(ts) {
+  if(!ts) return '—';
+  const d=new Date(ts);
+  return d.toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'});
+}
+
+// ════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════
+loadJalan();
+loadParsil();
+loadLaporan();
+</script>
+</body>
+</html>
