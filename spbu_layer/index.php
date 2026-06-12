@@ -1,10 +1,15 @@
 <?php
-$conn = new mysqli("localhost", "root", "");
+$host = getenv('DB_HOST') ?: "localhost";
+$user = getenv('DB_USER') ?: "root";
+$pass = getenv('DB_PASS') !== false ? getenv('DB_PASS') : "";
+$db   = getenv('DB_NAME') ?: "webgis_spbu";
+
+$conn = new mysqli($host, $user, $pass);
 if ($conn->connect_error) {
     die("Koneksi ke database gagal: " . $conn->connect_error);
 }
-$conn->query("CREATE DATABASE IF NOT EXISTS webgis_spbu");
-$conn->select_db("webgis_spbu");
+$conn->query("CREATE DATABASE IF NOT EXISTS `$db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+$conn->select_db($db);
 
 // Create table if not exists (automatic migration helper)
 $conn->query("CREATE TABLE IF NOT EXISTS spbu (

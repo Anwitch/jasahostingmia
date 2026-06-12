@@ -1,8 +1,8 @@
 <?php
-$host = "localhost";
-$user = "root";
-$pass = "";
-$db   = "webgis_bansos";
+$host = getenv('DB_HOST') ?: "localhost";
+$user = getenv('DB_USER') ?: "root";
+$pass = getenv('DB_PASS') !== false ? getenv('DB_PASS') : "";
+$db   = getenv('DB_NAME') ?: "webgis_bansos";
 
 // 1. Koneksi awal ke MySQL host tanpa memilih database
 $conn = new mysqli($host, $user, $pass);
