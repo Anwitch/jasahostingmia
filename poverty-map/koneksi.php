@@ -10,14 +10,17 @@ if ($conn->connect_error) {
     die("Koneksi MySQL gagal: " . $conn->connect_error);
 }
 
-// 2. Cek apakah database sudah ada
-$db_selected = $conn->select_db($db);
+// 2. Cek apakah database sudah ada (tanpa exception jika belum ada)
+$dbCheck = $conn->query("SHOW DATABASES LIKE '$db'");
+$db_selected = ($dbCheck && $dbCheck->num_rows > 0);
 
-if (!$db_selected) {
+if ($db_selected) {
+    $conn->select_db($db);
+} else {
     // 3. Buat database baru jika belum ada
     if ($conn->query("CREATE DATABASE `$db` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")) {
         $conn->select_db($db);
-        
+
         // 4. Baca dan eksekusi setup.sql
         $sqlPath = __DIR__ . '/setup.sql';
         if (file_exists($sqlPath)) {
@@ -38,4 +41,3 @@ if (!$db_selected) {
 
 // 5. Konfigurasi encoding UTF-8
 $conn->set_charset("utf8mb4");
-?>
