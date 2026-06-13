@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Peta Kepadatan Penduduk Pontianak</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        #map { height: 600px; width: 100%; }
+        
+        /* Style untuk Info Control (Kotak di pojok kanan atas) */
+        .info {
+            padding: 6px 8px;
+            font: 14px/16px Arial, Helvetica, sans-serif;
+            background: white;
+            background: rgba(255,255,255,0.8);
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            border-radius: 5px;
+        }
+        .info h4 { margin: 0 0 5px; color: #777; }
+
+        /* Style untuk Legend (Kotak di pojok kanan bawah) */
+        .legend {
+            line-height: 18px;
+            color: #555;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+        }
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script src="kecamatan.js"></script>
+
+<script>
+    // Inisialisasi Peta - Set view ke koordinat Pontianak
+    var map = L.map('map').setView([-0.02, 109.33], 12);
+
+    // Tambahkan Basemap (OpenStreetMap)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    // 4. Fungsi Pewarnaan berdasarkan Jumlah Penduduk
+    function getColor(d) {
+        return d > 130000 ? '#800026' :
+            d > 100000 ? '#BD0026' :
+            d > 75000  ? '#E31A1C' :
+                            '#FFEDA0';
+    }
+
+    // 5. Fungsi Style untuk Polygon
+    function style(feature) {
+        return {
+            fillColor: getColor(feature.properties.Penduduk), 
+            weight: 2,
+            opacity: 1,
+            color: 'white',
+            dashArray: '3',
+            fillOpacity: 0.7
+        };
+    }
+
+    // 6. Fungsi Interaksi (Hover)
+    function highlightFeature(e) {
+        var layer = e.target;
+        layer.setStyle({
+            weight: 5,
+            color: '#666',
+            dashArray: '',
+            fillOpacity: 0.7
+        });
+        layer.bringToFront();
+        info.update(layer.feature.properties);
+    }
+
+    var geojson;
+    function resetHighlight(e) {
+        geojson.resetStyle(e.target);
+        info.update();
+    }
+
+    function zoomToFeature(e) {
+        map.fitBounds(e.target.getBounds());
+    }
+
+    function onEachFeature(feature, layer) {
+        layer.on({
+            mouseover: highlightFeature,
+            mouseout: resetHighlight,
+            click: zoomToFeature
+        });
+    }
+
+    // Tambahkan data ke peta
+    geojson = L.geoJson(statesData, {
+        style: style,
+        onEachFeature: onEachFeature
+    }).addTo(map);
+
+    // 7. Menambahkan Custom Info Control
+    var info = L.control();
+
+    info.onAdd = function (map) {
+        this._div = L.DomUtil.create('div', 'info');
+        this.update();
+        return this._div;
+    };
+
+    info.update = function (props) {
+        this._div.innerHTML = '<h4>Jumlah Penduduk Pontianak</h4>' +  (props ?
+            '<b>' + props.Ket + '</b><br />' + 
+            (props.Penduduk ? props.Penduduk.toLocaleString('id-ID') : '0') + ' jiwa'
+            : 'Dekatkan mouse ke wilayah');
+    };
+
+    info.addTo(map);
+
+    // 8. Menambahkan Legend
+    var legend = L.control({position: 'bottomright'});
+
+    legend.onAdd = function (map) {
+        var div = L.DomUtil.create('div', 'info legend'),
+            grades = [0, 75000, 100000, 130000], // Sesuaikan dengan fungsi getColor
+            labels = [];
+
+        for (var i = 0; i < grades.length; i++) {
+            div.innerHTML +=
+                '<i style="background:' + getColor(grades[i] + 1) + '"></i> ' +
+                grades[i].toLocaleString('id-ID') + (grades[i + 1] ? '&ndash;' + grades[i + 1].toLocaleString('id-ID') + '<br>' : '+');
+        }
+        return div;
+    };
+
+    legend.addTo(map);
+
+</script>
+</body>
+</html>
