@@ -46,10 +46,15 @@ function updateCoverage($conn) {
 
     $penduduk = $conn->query("SELECT * FROM penduduk_miskin");
     while ($p = $penduduk->fetch_assoc()) {
+        if ($p['lat'] === null || $p['lng'] === null) continue;
+
         $terdekat_id = "NULL";
         $jarak_min   = INF;
         
         foreach ($rumah_ibadah_list as $ri) {
+            if ($ri['lat'] === null || $ri['lng'] === null) continue;
+            if ((float)$ri['lat'] === 0.0 && (float)$ri['lng'] === 0.0) continue;
+
             $jarak = hitungJarak($p['lat'], $p['lng'], $ri['lat'], $ri['lng']);
             if ($jarak <= $ri['radius'] && $jarak < $jarak_min) {
                 $jarak_min   = $jarak;
@@ -527,24 +532,46 @@ if ($action == 'delete_user' && $_SERVER['REQUEST_METHOD'] == 'POST') {
 // ── GET GEOCODING QUEUE ───────────────────────────────────────────────────────
 if ($action == 'get_geocoding_queue') {
     requireAdmin($role);
-    $res = $conn->query("
-        SELECT id, nama_kepala, jumlah_anggota, alamat, status_geocoding
+    $rows = [];
+
+    $res1 = $conn->query("
+        SELECT id, nama_kepala AS nama, alamat, status_geocoding
         FROM penduduk_miskin
         WHERE lat IS NULL OR lng IS NULL
         ORDER BY id DESC
     ");
-    $rows = [];
-    while ($row = $res->fetch_assoc()) $rows[] = $row;
+    while ($row = $res1->fetch_assoc()) {
+        $row['tipe'] = 'penduduk';
+        $rows[] = $row;
+    }
+
+    $res2 = $conn->query("
+        SELECT id, nama, alamat, NULL AS status_geocoding
+        FROM rumah_ibadah
+        WHERE (lat IS NULL OR lng IS NULL) OR (lat = 0 AND lng = 0)
+        ORDER BY id DESC
+    ");
+    while ($row = $res2->fetch_assoc()) {
+        $row['tipe'] = 'ri';
+        $rows[] = $row;
+    }
+
     echo json_encode($rows);
 }
 
 // ── UPDATE LOKASI (dari antrean geocoding) ────────────────────────────────────
 if ($action == 'update_lokasi' && $_SERVER['REQUEST_METHOD'] == 'POST') {
     requireAdmin($role);
-    $id  = (int)$_POST['id'];
-    $lat = (float)$_POST['lat'];
-    $lng = (float)$_POST['lng'];
-    $conn->query("UPDATE penduduk_miskin SET lat=$lat, lng=$lng, status_geocoding='sukses' WHERE id=$id");
+    $id   = (int)$_POST['id'];
+    $lat  = (float)$_POST['lat'];
+    $lng  = (float)$_POST['lng'];
+    $tipe = $_POST['tipe'] ?? 'penduduk';
+
+    if ($tipe === 'ri') {
+        $conn->query("UPDATE rumah_ibadah SET lat=$lat, lng=$lng WHERE id=$id");
+    } else {
+        $conn->query("UPDATE penduduk_miskin SET lat=$lat, lng=$lng, status_geocoding='sukses' WHERE id=$id");
+    }
     updateCoverage($conn);
     echo json_encode(['status' => 'success']);
 }

@@ -336,7 +336,7 @@ $is_koordinator = ($role === 'koordinator');
                     <span class="text-amber-500 flex-shrink-0 mt-0.5">&#9888;</span>
                     <div class="text-[11px] text-amber-800">
                         <span class="font-bold" id="stat-belum-validasi">0</span> data belum punya koordinat
-                        (hasil import CSV yang gagal geocoding).
+                        (hasil import CSV, koordinat belum dilengkapi).
                         <?php if ($is_admin): ?>
                         <button onclick="switchTab('wilayah')" class="underline font-semibold hover:text-amber-900 ml-1">Lihat Antrean →</button>
                         <?php endif; ?>
@@ -388,7 +388,7 @@ $is_koordinator = ($role === 'koordinator');
                     <span id="chevron-antrean" class="chevron text-amber-400 text-xs">&#9660;</span>
                 </button>
                 <div id="collapse-antrean" class="collapse-body closed">
-                    <p class="text-[10px] text-amber-700 px-3 pb-2">Data ini gagal di-geocoding otomatis. Klik "Bidik di Peta" lalu klik lokasi rumah yang sesuai.</p>
+                    <p class="text-[10px] text-amber-700 px-3 pb-2">Data hasil import CSV belum punya koordinat. Klik "Bidik di Peta" lalu klik lokasi yang sesuai.</p>
                     <div id="list-antrean" class="px-3 pb-3 space-y-1.5"></div>
                 </div>
             </section>
@@ -725,14 +725,14 @@ $is_koordinator = ($role === 'koordinator');
                     <div class="font-semibold text-slate-600 mb-1">Format kolom (Penduduk):</div>
                     <div class="font-mono bg-white border border-slate-100 rounded px-2 py-1 text-slate-700">Nama KK · Jml Anggota · Alamat · RT · RW · Kelurahan · Kecamatan</div>
                     <div class="mt-1">• Baris pertama (header) diabaikan &nbsp;• Delimiter koma atau titik koma</div>
-                    <div>• Jika geocoding gagal → masuk Antrean Validasi Lokasi</div>
+                    <div>• Koordinat tidak di-geocode otomatis → lengkapi via "Bidik di Peta" pada Antrean Validasi Lokasi</div>
                 </div>
                 <div id="import-format-ri" class="hidden mt-3 bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-[10px] text-slate-500 space-y-0.5">
                     <div class="font-semibold text-slate-600 mb-1">Format kolom (Rumah Ibadah):</div>
                     <div class="font-mono bg-white border border-slate-100 rounded px-2 py-1 text-slate-700">Nama · Jenis · Alamat · Radius(opsional)</div>
                     <div class="mt-1">• Jenis: Masjid / Gereja Protestan / Gereja Katolik / Vihara / Pura / Kelenteng</div>
                     <div>• Jenis kosong → default Masjid &nbsp;• Radius kosong → default 500m</div>
-                    <div class="text-amber-600 font-semibold">• RI yang gagal geocoding tidak diinsert</div>
+                    <div class="text-amber-600 font-semibold">• Semua RI diinsert tanpa koordinat → lengkapi via "Bidik di Peta" pada Antrean Validasi Lokasi</div>
                 </div>
                 <button id="btn-start-import" onclick="startImport()" disabled
                     class="w-full mt-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-sm py-2.5 rounded-lg transition">
@@ -1604,7 +1604,7 @@ document.getElementById('exif-file-input').addEventListener('change', async func
                             </p>
                             <input type="text"   id="kepala"  placeholder="Nama Kepala Keluarga *" class="w-full mb-1 p-1 text-xs border rounded">
                             <input type="number" id="anggota" placeholder="Jumlah Anggota KK *"    class="w-full mb-1 p-1 text-xs border rounded">
-                            <input type="hidden" id="alamat_pm" value="${alamat.replace(/"/g,'&quot;')}">
+                            <textarea id="alamat_pm" rows="2" class="w-full mb-1 p-1 text-xs border rounded">${alamat}</textarea>
                             <label class="text-[10px] text-slate-500 block mt-1 mb-0.5">
                                 Foto Rumah
                                 <span class="text-violet-600 font-semibold">(terisi otomatis dari foto GPS &#10003;)</span>
@@ -1666,7 +1666,7 @@ map.on('click',function(e){
                 <div id="formPM"${!isPM?' class="hidden"':''}>
                     <input type="text"   id="kepala"  placeholder="Nama Kepala Keluarga" class="w-full mb-1 p-1 text-xs border rounded">
                     <input type="number" id="anggota" placeholder="Jumlah Anggota KK"    class="w-full mb-1 p-1 text-xs border rounded">
-                    <input type="hidden" id="alamat_pm" value="${alamat.replace(/"/g,'&quot;')}">
+                    <textarea id="alamat_pm" rows="2" class="w-full mb-1 p-1 text-xs border rounded">${alamat}</textarea>
                     <label class="text-[10px] text-slate-500 block mt-1 mb-0.5">Foto Rumah (opsional)</label>
                     <input type="file" id="foto_rumah_input" accept="image/*" class="w-full text-[10px] p-0.5 border border-slate-300 rounded bg-white">
                 </div>
@@ -1922,15 +1922,15 @@ window.loadGecodingQueue = () => {
             list.innerHTML = rows.map(r => `
                 <div class="group relative flex items-center gap-2 bg-white rounded-lg border border-amber-200 px-2 py-1.5 hover:border-amber-300 transition">
                     <div class="min-w-0 flex-1">
-                        <div class="text-xs font-semibold text-slate-800 truncate pr-5">${r.nama_kepala}</div>
+                        <div class="text-xs font-semibold text-slate-800 truncate pr-5">${r.nama}${r.tipe==='ri' ? ' <span class=\"text-amber-500\">(RI)</span>' : ''}</div>
                         <div class="text-[10px] text-slate-400 truncate">${r.alamat||'Alamat tidak tersedia'}</div>
                     </div>
-                    <button onclick="openBidikMode(${r.id},'${escQ(r.nama_kepala)}')"
+                    <button onclick="openBidikMode(${r.id},'${escQ(r.nama)}','${r.tipe}')"
                         class="flex-shrink-0 text-[10px] font-bold px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition whitespace-nowrap">
                         &#127919; Bidik
                     </button>
                     <!-- Tombol hapus, muncul saat hover -->
-                    <button onclick="hapusAntrean(${r.id},'${escQ(r.nama_kepala)}')"
+                    <button onclick="hapusAntrean(${r.id},'${escQ(r.nama)}','${r.tipe}')"
                         class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity
                                w-4 h-4 flex items-center justify-center rounded-full
                                bg-red-100 hover:bg-red-500 text-red-500 hover:text-white text-[9px] font-bold leading-none"
@@ -1939,22 +1939,25 @@ window.loadGecodingQueue = () => {
         });
 };
 
-window.hapusAntrean = (id, nama) => {
+window.hapusAntrean = (id, nama, tipe) => {
     if (!confirm(`Hapus data "${nama}"?\nData ini akan dihapus permanen dari database.`)) return;
     const fd = new FormData(); fd.append('id', id);
-    fetch('api.php?action=delete_pm', {method:'POST', body:fd})
+    const endpoint = tipe === 'ri' ? 'delete_ri' : 'delete_pm';
+    fetch(`api.php?action=${endpoint}`, {method:'POST', body:fd})
         .then(r => r.json())
         .then(() => { loadData(); loadGecodingQueue(); });
 };
 
 // ── BIDIK MODE ────────────────────────────────────────────────────────
 let _bidikPmId = null;
+let _bidikTipe = 'penduduk';
 
-window.openBidikMode = (id, nama) => {
+window.openBidikMode = (id, nama, tipe) => {
     _bidikPmId = id;
+    _bidikTipe = tipe || 'penduduk';
     document.getElementById('map').classList.add('map-crosshair');
     document.getElementById('add-mode-toast-icon').innerHTML = '&#127919;';
-    document.getElementById('add-mode-toast-text').textContent = `Bidik lokasi rumah: ${nama}`;
+    document.getElementById('add-mode-toast-text').textContent = `Bidik lokasi: ${nama}`;
     document.getElementById('add-mode-toast').classList.remove('hidden');
     // Pastikan tab wilayah terbuka supaya user bisa lihat antrian
     if (activeTab !== 'wilayah') switchTab('wilayah');
@@ -1962,6 +1965,7 @@ window.openBidikMode = (id, nama) => {
 
 window.cancelBidikMode = () => {
     _bidikPmId = null;
+    _bidikTipe = 'penduduk';
     document.getElementById('map').classList.remove('map-crosshair');
     document.getElementById('add-mode-toast').classList.add('hidden');
 };
@@ -1971,9 +1975,10 @@ map.on('click', function(e) {
     if (!_bidikPmId) return;
     const {lat, lng} = e.latlng;
     const id = _bidikPmId;
+    const tipe = _bidikTipe;
     cancelBidikMode();
     const fd = new FormData();
-    fd.append('id', id); fd.append('lat', lat); fd.append('lng', lng);
+    fd.append('id', id); fd.append('lat', lat); fd.append('lng', lng); fd.append('tipe', tipe);
     fetch('api.php?action=update_lokasi', {method:'POST', body:fd})
         .then(r => r.json())
         .then(() => { loadData(); loadGecodingQueue(); });

@@ -151,7 +151,7 @@ while (($row = fgetcsv($handle, 0, $delim)) !== false) {
 
         // Simpan tanpa koordinat — admin klik peta untuk melengkapi
         $conn->query("INSERT INTO rumah_ibadah (nama, jenis, alamat, radius, lat, lng)
-                      VALUES ('$nama', '$jenis', '$alamat', $radius, NULL, NULL)");
+                      VALUES ('$nama', '$jenis', '$alamat', $radius, 0, 0)");
         $sukses++;
         sse('row', ['num'=>$row_num,'total'=>$total,'status'=>'sukses','nama'=>$row[0],
                     'msg'=>"$jenis · radius {$radius}m · koordinat perlu dilengkapi manual"]);
